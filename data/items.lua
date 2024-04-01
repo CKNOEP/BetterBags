@@ -413,6 +413,10 @@ end
 
 ---@private
 function items:BackpackLoadFunction()
+  if debug:MockBackpackItems() then
+    return
+  end
+
   ---@type ExtraSlotInfo
   local extraSlotInfo = {
     emptySlots = {},

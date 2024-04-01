@@ -81,3 +81,37 @@ function debug:HideItemTooltip(item)
   tooltipLines = 0
   self.tooltip:Hide()
 end
+
+---@return boolean
+function debug:MockBackpackItems()
+  if not self.enabled then return false end
+
+  ---@class Events: AceModule
+  local events = addon:GetModule('Events')
+
+  ---@class Items: AceModule
+  local items = addon:GetModule('Items')
+
+  ---@type ExtraSlotInfo
+  local extraSlotInfo = {
+    emptySlots = {},
+    freeSlotKeys = {},
+    totalItems = 0,
+    freeSlotKey = "",
+    freeReagentSlotKey = "",
+    emptySlotByBagAndSlot = {},
+    dirtyItems = {},
+    itemsBySlotKey = {},
+  }
+
+  items.slotInfo = CopyTable(extraSlotInfo)
+
+  -- All items in all bags have finished loading, fire the all done event.
+  events:SendMessageLater('items/RefreshBackpack/Done', function()
+    items._container = nil
+    items._doingRefreshAll = false
+  end,
+  extraSlotInfo)
+
+  return true
+end
