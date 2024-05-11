@@ -60,6 +60,9 @@ local question = addon:GetModule('Question')
 ---@class Debug: AceModule
 local debug = addon:GetModule('Debug')
 
+---@class SectionSort: AceModule
+local sectionSort = addon:GetModule('SectionSort')
+
 ---@class BagFrames
 ---@field Backpack Bag
 ---@field Bank Bag
@@ -267,4 +270,9 @@ function addon:OnEnable()
     -- the base UI/UX these screens refer to.
     C_CVar.SetCVarBitfield("closedInfoFrames", LE_FRAME_TUTORIAL_EQUIP_REAGENT_BAG --[[@as number]], true)
   end
+  local s = sectionSort:Create()
+  s:GetFrame():SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  s:GetFrame():SetParent(UIParent)
+  s:Show()
+  s:SetTitle("Consumable")
 end
