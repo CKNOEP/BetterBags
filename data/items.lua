@@ -21,11 +21,20 @@ local database = addon:GetModule('Database')
 ---@class Localization: AceModule
 local L = addon:GetModule('Localization')
 
+---@class Async: AceModule
+local async = addon:GetModule('Async')
+
 ---@class Debug: AceModule
 local debug = addon:GetModule('Debug')
 
 -- A slot key is a string that represents a bag and slot id.
 ---@alias SlotKey string
+
+---@class RefreshEvent
+---@field kind BagKind
+---@field wipe boolean
+---@field bagid number
+---@field event string
 
 -- ItemLinkInfo contains all the information parsed from an item link.
 ---@class (exact) ItemLinkInfo
@@ -91,12 +100,18 @@ end
 
 function items:OnEnable()
 
+  self._refreshQueueEvent = {}
+
   events:RegisterEvent('EQUIPMENT_SETS_CHANGED', function()
     self:DoRefreshAll(true)
   end)
+
+  events:CatchUntil('BAG_UPDATE', 'BAG_UPDATE_DELAYED', function (caughtEvents, finalArgs)
+    self:OnBagUpdate(caughtEvents, finalArgs)
+  end)
+
   local eventList = {
-    'BAG_UPDATE_DELAYED',
-    'BAG_UPDATE',
+--    'BAG_UPDATE_DELAYED',
     'PLAYERBANKSLOTS_CHANGED',
   }
 
@@ -106,15 +121,13 @@ function items:OnEnable()
 
   events:RegisterMessage('bags/Draw/Backpack/Done', function ()
     self._doingRefresh = false
-    if self._refreshQueueEvent then
-      local wipe = false
-      for _, eventArg in pairs(self._refreshQueueEvent) do
-        if eventArg.eventName == "bags/RefreshAll" and eventArg.args[1] then
-          wipe = true
-        end
+    local nextEvent = table.remove(self._refreshQueueEvent, 1) --[[@as EventArg]]
+    if nextEvent then
+      if nextEvent.eventName == 'BAG_UPDATE' then
+        C_Timer.After(0, function()
+          self:OnBagUpdate({nextEvent}, {eventName = 'BAG_UPDATE_DELAYED', args = {}})
+        end)
       end
-      self._refreshQueueEvent = nil
-      events:SendMessageLater('bags/RefreshAll', nil, wipe)
     end
   end)
 
@@ -173,6 +186,34 @@ function items:OnEnable()
     addon.atBank = false
     items:ClearBankCache()
   end)
+end
+
+---@param caughtEvents EventArg[]
+---@param finalArgs EventArg
+function items:OnBagUpdate(caughtEvents, finalArgs)
+  if self._doingRefresh then
+    for _, ev in pairs(caughtEvents) do
+      table.insert(self._refreshQueueEvent, ev)
+    end
+    return
+  end
+  self._doingRefresh = true
+  local backpackBags = {}
+  local bankBags = {}
+  local reagentBags = {}
+  for _, ev in pairs(caughtEvents) do
+    if const.BACKPACK_BAGS[ev.args] then
+      table.insert(backpackBags, ev.args)
+    elseif const.BANK_BAGS[ev.args] then
+      table.insert(bankBags, ev.args)
+    elseif const.REAGENTBANK_BAGS[ev.args] then
+      table.insert(reagentBags, ev.args)
+    end
+  end
+  self:RefreshBackpack(false, backpackBags)
+  self:RefreshBank(false, bankBags)
+    --self:RefreshBank(false, bankBags)
+  end
 end
 
 ---@param kind BagKind
@@ -293,14 +334,16 @@ end
 -- RefreshBackback will refresh all bags' contents entirely and update
 -- the item database.
 ---@param wipe boolean
-function items:RefreshBackpack(wipe)
+---@param bags? number[]
+function items:RefreshBackpack(wipe, bags)
   debug:StartProfile('Backpack Data Pipeline')
 
   equipmentSets:Update()
   local container = self:NewLoader(const.BAG_KIND.BACKPACK)
 
+  if not bags then bags = const.BACKPACK_BAGS end
   -- Loop through all the bags and schedule each item for a refresh.
-  for i in pairs(const.BACKPACK_BAGS) do
+  for _, i in pairs(bags) do
     self:StageBagForUpdate(i, container)
   end
   --- Process the item container.
